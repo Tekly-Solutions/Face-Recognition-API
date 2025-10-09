@@ -1,7 +1,8 @@
 """
-Configuration optimized for NVIDIA MX330 (2GB VRAM)
+Configuration Module optimized for NVIDIA GeForce MX330 (2GB VRAM)
 
 Copyright (c) 2025 Tekly IT Solutions. All rights reserved.
+PROPRIETARY SOFTWARE - Commercial use requires a valid license agreement.
 """
 from dataclasses import dataclass
 from typing import Tuple

@@ -1,4 +1,9 @@
-"""Model storage"""
+"""
+Model Storage Service
+
+Copyright (c) 2025 Tekly IT Solutions. All rights reserved.
+PROPRIETARY SOFTWARE - Commercial use requires license agreement.
+"""
 import os
 import pickle
 import faiss

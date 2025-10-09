@@ -1,4 +1,10 @@
-"""Main entry point with training capability"""
+"""
+Face Recognition API - Main Entry Point
+
+Copyright (c) 2025 Tekly IT Solutions. All rights reserved.
+PROPRIETARY SOFTWARE - Commercial use requires license agreement.
+Contact Tekly IT Solutions for licensing inquiries.
+"""
 
 import os
 import sys

@@ -1,10 +1,14 @@
 # Face Recognition API 🔍
 
+> **⚠️ PROPRIETARY SOFTWARE NOTICE ⚠️**  
+> This is proprietary software owned by **Tekly IT Solutions**.  
+> Commercial use requires a valid license. Contact Tekly IT Solutions for licensing.
+
 A robust, real-time face verification system with camera integration, built using deep learning technologies including RetinaFace for detection, ArcFace (InsightFace) for embeddings, and FAISS for fast similarity search.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.5%2B-green.svg)](https://opencv.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 
 ## 🚀 Features
 
@@ -329,7 +333,19 @@ mypy src/
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**PROPRIETARY SOFTWARE - NOT OPEN SOURCE**
+
+This Face Recognition API is proprietary software owned by **Tekly IT Solutions**.
+
+⚠️ **IMPORTANT NOTICE**: This software is NOT licensed under MIT, Apache, GPL, or any other open-source license.
+
+**Usage Requirements:**
+
+- Commercial use requires a valid license agreement with Tekly IT Solutions
+- Unauthorized use, copying, or distribution is strictly prohibited
+- For licensing inquiries, contact: **Tekly IT Solutions**
+
+See the [LICENSE](LICENSE) file for complete terms and conditions.
 
 ## 🙏 Acknowledgments
 
