@@ -62,7 +62,43 @@ def main():
     
     # Ensure dataset directory exists
     os.makedirs(dataset_path, exist_ok=True)
-    
+
+    # --- Auto-download images from Firebase ---
+    print("\n☁️ Downloading all face images from Firebase (if available)...")
+    new_images_count = 0  # define here
+    try:
+        from src.services.firebase_downloader import download_all_faces
+        new_images_count = download_all_faces()
+        if new_images_count > 0:
+            print(f"✅ Successfully downloaded {new_images_count} new images to dataset/")
+        else:
+            print("⚠️ No new images found in Firebase Storage.")
+    except Exception as e:
+        print(f"❌ Firebase download error: {e}")
+
+    # --- Auto rebuild model if new images were downloaded or no model exists ---
+    model_path = "models/enhanced_face_model.pkl"
+    rebuild_needed = new_images_count > 0 or not os.path.exists(model_path)
+
+    if rebuild_needed:
+        print("\n🔨 Rebuilding model from dataset automatically...")
+        embeddings, labels, index, success = rebuild_model(app, dataset_path, threshold)
+        if not success:
+            embeddings, labels, index = [], [], None
+    else:
+        # Load existing model directly without prompting
+        try:
+            embeddings, labels, threshold, index, success = load_model(model_path)
+            if success:
+                print(f"✅ Existing model loaded successfully: {len(embeddings)} embeddings")
+            else:
+                print("⚠️ Failed to load existing model. You can rebuild using option 7.")
+                embeddings, labels, index = [], [], None
+        except Exception as e:
+            print(f"⚠️ Error loading existing model: {e}")
+            embeddings, labels, index = [], [], None
+    # --- End auto rebuild ---
+
     # Check for model in FaceRecognition/models folder
     model_path = "models/enhanced_face_model.pkl"
     if os.path.exists(model_path):
@@ -101,7 +137,8 @@ def main():
         print("6. 📈 System info")
         print("7. 🔨 Rebuild model from dataset")
         print("8. 🎓 Train new face (Camera)")
-        print("9. 🚪 Exit")
+        print("9. 👋 Download Images from firebase")
+        print("10. 🚪 Exit")
         print("="*60)
         
         choice = input("Choose option (1-9): ").strip()
@@ -220,10 +257,22 @@ def main():
                 pass
         
         elif choice == '9':
+            print("\n☁️ Download all face images from Firebase")
+            try:
+                from src.services.firebase_downloader import download_all_faces
+                count = download_all_faces()
+                if count > 0:
+                    print(f"✅ Successfully downloaded {count} images to dataset/")
+                else:
+                    print("⚠️ No New images found in Firebase Storage.")
+            except Exception as e:
+                print(f"❌ Firebase download error: {e}")
+
+        elif choice == '10':
             print("👋 Goodbye!")
             close_camera(camera)
             break
-        
+
         else:
             print("❌ Invalid choice")
 

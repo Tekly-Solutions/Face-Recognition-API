@@ -2,6 +2,9 @@
 dataset/
 FaceRecognition/dataset/
 
+# Firebase service account key
+serviceAccountKey.json
+
 # Models and trained data (large files)
 models/*.pkl
 models/*.faiss
