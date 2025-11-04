@@ -13,6 +13,7 @@
 # NOTE: This Dockerfile contains ONLY backend code.
 # Frontend is not included (separate project/deployment).
 # ==============================================================================
+
 FROM python:3.11-slim
 
 # Set metadata
@@ -26,11 +27,12 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     PORT=8000 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TF_CPP_MIN_LOG_LEVEL=2 \
+    TF_ENABLE_ONEDNN_OPTS=0
 
 # Install system dependencies with minimal size
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # OpenCV dependencies
     libgl1 \
     libglib2.0-0 \
     libsm6 \
@@ -38,19 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgomp1 \
     libgthread-2.0-0 \
-    # Additional utilities
     curl \
     wget \
     git \
-    # Build essentials for package compilation
     build-essential \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && apt-get autoremove -y
+    && apt-get clean
 
 # Set working directory
-WORKDIR /app/Backend
-
+WORKDIR /app
 
 # Copy requirements first (for better caching)
 COPY requirements.txt .
@@ -62,21 +60,23 @@ RUN pip install --upgrade pip setuptools wheel && \
     fastapi==0.104.1 \
     uvicorn[standard]==0.24.0 \
     firebase-admin>=6.0.0 \
-    pydantic>=2.0.0
-
-# Copy only backend application code (no frontend)
-COPY .. ./Backend/
-
+    pydantic>=2.0.0 \
+    tf-keras==2.20.1 \
+    faiss-cpu==1.12.0
 
 
+# Copy application code
+COPY . /app
 
+# Create necessary directories with proper permissions
 RUN mkdir -p dataset models logs temp config && \
-    chmod -R 755 /app && \
-    chmod -R 777 dataset models logs temp
+    chmod -R 755 /app
 
-# Add non-root user for security (optional but recommended)
+# Add non-root user for security
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
+
+# Switch to non-root user
 USER appuser
 
 # Expose port
@@ -87,7 +87,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -sf http://localhost:8000/health || exit 1
 
 # Run FastAPI server with Uvicorn
-CMD ["uvicorn", "Backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ==============================================================================
 # Build Instructions:
