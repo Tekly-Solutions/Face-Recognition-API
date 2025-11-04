@@ -49,7 +49,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get autoremove -y
 
 # Set working directory
-WORKDIR /app
+WORKDIR /app/Backend
+
 
 # Copy requirements first (for better caching)
 COPY requirements.txt .
@@ -65,6 +66,9 @@ RUN pip install --upgrade pip setuptools wheel && \
 
 # Copy only backend application code (no frontend)
 COPY .. ./Backend/
+
+
+
 
 RUN mkdir -p dataset models logs temp config && \
     chmod -R 755 /app && \
@@ -83,7 +87,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -sf http://localhost:8000/health || exit 1
 
 # Run FastAPI server with Uvicorn
-CMD ["uvicorn", "fastapi_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "Backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # ==============================================================================
 # Build Instructions:
