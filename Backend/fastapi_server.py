@@ -94,6 +94,13 @@ class SaveEmployeePhotosResponse(BaseModel):
     photos_saved: int
     saved_paths: List[str]
 
+class FirebaseDownloadResponse(BaseModel):
+    success: bool
+    message: str
+    images_downloaded: int
+    total_faces_in_database: int
+    persons_trained: List[str]
+
 # Global variables
 face_app = None
 embeddings = []
@@ -111,20 +118,50 @@ def initialize_system():
     # Initialize InsightFace
     face_app = init_insightface()
     
-    # Load existing model if available
+    # Auto-download images from Firebase
+    print("\n☁️ Attempting to download images from Firebase Storage...")
+    new_images_count, firebase_success = download_firebase_faces()
+    
+    # Load existing model or rebuild if needed
     model_path = "models/enhanced_face_model.pkl"
-    if os.path.exists(model_path):
-        print("📁 Loading existing model...")
-        embeddings, labels, threshold, index, success = load_model(model_path)
-        if success:
-            print(f"✅ Model loaded: {len(labels)} faces")
+    rebuild_needed = new_images_count > 0 or not os.path.exists(model_path)
+    
+    if rebuild_needed:
+        print("\n🔨 Rebuilding model from dataset...")
+        new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
+        
+        if success and len(new_embeddings) > 0:
+            new_index = build_index(new_embeddings)
+            if new_index:
+                save_model(new_embeddings, new_labels, threshold, new_index)
+                embeddings = new_embeddings
+                labels = new_labels
+                index = new_index
+                print(f"✅ Model rebuilt: {len(labels)} faces in database")
+            else:
+                print("⚠️ Failed to build index, starting fresh")
+                embeddings = []
+                labels = []
+                index = None
         else:
-            print("⚠️ Failed to load model, starting fresh")
+            print("⚠️ Failed to load dataset, starting fresh")
             embeddings = []
             labels = []
             index = None
     else:
-        print("⚠️ No existing model found")
+        # Load existing model
+        if os.path.exists(model_path):
+            print("📁 Loading existing model...")
+            embeddings, labels, threshold, index, success = load_model(model_path)
+            if success:
+                print(f"✅ Model loaded: {len(labels)} faces")
+            else:
+                print("⚠️ Failed to load model, starting fresh")
+                embeddings = []
+                labels = []
+                index = None
+        else:
+            print("⚠️ No existing model found")
     
     # Ensure dataset directory exists
     os.makedirs(dataset_path, exist_ok=True)
@@ -173,6 +210,28 @@ def save_base64_image(base64_string: str, person_name: str, image_index: int):
     except Exception as e:
         print(f"Error saving image: {e}")
         return None
+
+
+def download_firebase_faces():
+    """Download all face images from Firebase Storage"""
+    try:
+        from src.services.firebase_downloader import download_all_faces
+        
+        print("\n☁️ Downloading faces from Firebase Storage...")
+        new_images_count = download_all_faces(dataset_path)
+        
+        if new_images_count > 0:
+            print(f"✅ Successfully downloaded {new_images_count} new images from Firebase")
+            return new_images_count, True
+        else:
+            print("⚠️ No new images found in Firebase Storage")
+            return 0, True
+    except ImportError:
+        print("⚠️ Firebase not configured - skipping Firebase download")
+        return 0, True
+    except Exception as e:
+        print(f"❌ Firebase download error: {e}")
+        return 0, False
 
 
 @app.on_event("startup")
@@ -452,6 +511,87 @@ async def rebuild_model():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/firebase/download", response_model=FirebaseDownloadResponse)
+async def firebase_download():
+    """
+    Download all face images from Firebase Storage and rebuild model automatically
+    
+    This endpoint:
+    1. Downloads new images from Firebase Storage (faces/ folder)
+    2. Saves them to the local dataset folder
+    3. Automatically rebuilds the face recognition model
+    4. Returns updated database statistics
+    """
+    global embeddings, labels, index
+    
+    try:
+        print("\n" + "="*60)
+        print("📥 FIREBASE DOWNLOAD & MODEL REBUILD")
+        print("="*60)
+        
+        # Download images from Firebase
+        new_images_count, download_success = download_firebase_faces()
+        
+        if not download_success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to download images from Firebase"
+            )
+        
+        # If new images were downloaded or no model exists, rebuild
+        model_path = "models/enhanced_face_model.pkl"
+        rebuild_needed = new_images_count > 0 or not os.path.exists(model_path)
+        
+        if rebuild_needed:
+            print("\n🔨 Rebuilding model from dataset...")
+            new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
+            
+            if success and len(new_embeddings) > 0:
+                new_index = build_index(new_embeddings)
+                if new_index:
+                    save_model(new_embeddings, new_labels, threshold, new_index)
+                    
+                    # Update global variables
+                    embeddings = new_embeddings
+                    labels = new_labels
+                    index = new_index
+                    
+                    unique_persons = list(set(labels))
+                    
+                    print(f"✅ Model rebuilt successfully")
+                    print(f"📊 Total faces: {len(labels)}")
+                    print(f"👥 Unique persons: {len(unique_persons)}")
+                    
+                    return FirebaseDownloadResponse(
+                        success=True,
+                        message=f"Successfully downloaded {new_images_count} images and rebuilt model",
+                        images_downloaded=new_images_count,
+                        total_faces_in_database=len(labels),
+                        persons_trained=unique_persons
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to build index")
+            else:
+                raise HTTPException(status_code=500, detail="Failed to load dataset after download")
+        else:
+            # No new images, but return current database status
+            unique_persons = list(set(labels)) if len(labels) > 0 else []
+            
+            return FirebaseDownloadResponse(
+                success=True,
+                message="No new images found in Firebase Storage",
+                images_downloaded=0,
+                total_faces_in_database=len(labels),
+                persons_trained=unique_persons
+            )
+            
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"❌ Firebase download error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     
@@ -468,6 +608,7 @@ if __name__ == "__main__":
     print("   POST /verify                  - Verify face")
     print("   GET  /database                - Database info")
     print("   POST /rebuild                 - Rebuild model")
+    print("   POST /firebase/download       - Download from Firebase & rebuild")
     print("="*60 + "\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

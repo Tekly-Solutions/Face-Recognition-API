@@ -1,0 +1,51 @@
+# =====================================================================
+# Docker Compose for Face Recognition FastAPI Backend
+# Copyright (c) 2025 Tekly IT Solutions
+#
+# This compose file builds and runs only the backend API container.
+# =====================================================================
+
+services:
+  backend:
+    container_name: face-recognition-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount important directories to persist data
+      - ./dataset:/app/dataset
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PORT=8000
+      - ENV=production
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEBIAN_FRONTEND=noninteractive
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Uncomment below if you plan to use GPU (requires NVIDIA Docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
+
+# =====================================================================
+# To build and run:
+#   docker-compose up --build -d
+#
+# To stop and remove containers:
+#   docker-compose down
+#
+# To view logs:
+#   docker-compose logs -f
+# =====================================================================
