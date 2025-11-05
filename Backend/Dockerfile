@@ -62,8 +62,7 @@ RUN pip install --upgrade pip setuptools wheel && \
     firebase-admin>=6.0.0 \
     pydantic>=2.0.0 \
     tf-keras==2.20.1 \
-    faiss-cpu==1.12.0
-
+    faiss-cpu
 
 # Copy application code
 COPY . /app
@@ -87,7 +86,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -sf http://localhost:8000/health || exit 1
 
 # Run FastAPI server with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "fastapi_server:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # ==============================================================================
 # Build Instructions:
@@ -101,4 +100,8 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 #
 # Run with docker-compose:
 # docker-compose up
+#
+# Test the API:
+# curl http://localhost:8000/health
+# curl http://localhost:8000/docs
 # ==============================================================================
