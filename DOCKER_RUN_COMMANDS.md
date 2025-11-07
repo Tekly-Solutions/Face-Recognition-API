@@ -5,8 +5,7 @@
 ### **Windows (CMD)**
 
 ```cmd
-cd Backend
-docker-compose up --build -d
+c
 ```
 
 ### **macOS/Linux (Terminal)**
