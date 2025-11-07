@@ -10,7 +10,7 @@ c
 
 ### **macOS/Linux (Terminal)**
 
-```bash
+```ba
 cd Backend
 docker-compose up --build -d
 ```
