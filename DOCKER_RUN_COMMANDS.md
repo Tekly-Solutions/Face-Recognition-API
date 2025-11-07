@@ -4,7 +4,7 @@
 
 ### **Windows (CMD)**
 
-```cmd
+```cm
 c
 ```
 
