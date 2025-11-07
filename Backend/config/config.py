@@ -7,13 +7,14 @@ PROPRIETARY SOFTWARE - Commercial use requires a valid license agreement.
 from dataclasses import dataclass
 from typing import Tuple
 
-@dataclass
-class GPUConfig:
-    """GPU settings optimized for MX330"""
-    use_gpu: bool = True
-    gpu_id: int = 0
-    batch_size: int = 8  # Smaller batch for 2GB VRAM
-    fallback_to_cpu: bool = True
+# GPU CONFIG DISABLED - Using CPU mode only
+# @dataclass
+# class GPUConfig:
+#     """GPU settings optimized for MX330"""
+#     use_gpu: bool = True
+#     gpu_id: int = 0
+#     batch_size: int = 8  # Smaller batch for 2GB VRAM
+#     fallback_to_cpu: bool = True
 
 @dataclass
 class ModelConfig:
@@ -40,7 +41,8 @@ class StorageConfig:
     index_path: str = "models/enhanced_face_index.faiss"
     use_gpu_index: bool = False  # Keep FAISS on CPU for MX330
 
-gpu_config = GPUConfig()
+# GPU CONFIG INSTANCE DISABLED - CPU mode only
+# gpu_config = GPUConfig()
 model_config = ModelConfig()
 camera_config = CameraConfig()
 dataset_config = DatasetConfig()
