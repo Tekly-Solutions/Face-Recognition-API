@@ -8,6 +8,31 @@ def download_all_faces(dataset_folder: str = "dataset"):
     and saves them in the dataset folder with the same structure.
     Skips images that already exist locally.
     """
+    try:
+        bucket = storage.bucket()
+        
+        # Test connection first
+        print("🔌 Testing Firebase Storage connection...")
+        blobs = list(bucket.list_blobs(prefix="faces/", max_results=1))
+        print("✅ Firebase Storage connection successful!")
+        
+    except Exception as e:
+        if "Invalid JWT Signature" in str(e) or "invalid_grant" in str(e):
+            print(f"❌ Firebase authentication failed: Invalid credentials")
+            print(f"💡 The ServiceAccountKey.json file may be:")
+            print(f"   - Corrupted or incomplete")
+            print(f"   - Expired (download a new one from Firebase Console)")
+            print(f"   - Not from the correct Firebase project")
+            print(f"\n📋 To fix:")
+            print(f"   1. Go to https://console.firebase.google.com")
+            print(f"   2. Select project: talentnest-tekly")
+            print(f"   3. Settings → Service Accounts")
+            print(f"   4. Generate New Private Key")
+            print(f"   5. Replace Backend/ServiceAccountKey.json")
+        else:
+            print(f"❌ Firebase Storage error: {e}")
+        raise
+    
     bucket = storage.bucket()
     blobs = bucket.list_blobs(prefix="faces/")
 

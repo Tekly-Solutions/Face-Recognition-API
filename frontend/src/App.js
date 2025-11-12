@@ -7,7 +7,7 @@ import Verify from "./components/Verify";
 import Database from "./components/Database";
 import SaveEmployeePhotos from "./components/SaveEmployeePhotos";
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_BASE_URL = "http://54.147.101.78:8000";
 
 function App() {
   const [activeTab, setActiveTab] = useState("health");
