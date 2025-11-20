@@ -26,6 +26,7 @@ from src.core.embedding_service import init_insightface
 from src.services.dataset_loader import load_dataset
 from src.services.index_manager import build_index
 from src.services.storage_service import save_model, load_model
+from src.services.incremental_updater import incremental_update, full_rebuild_needed
 from src.core.image_processor import process_single_image
 
 # Initialize FastAPI app
@@ -122,12 +123,47 @@ def initialize_system():
     print("\n☁️ Attempting to download images from Firebase Storage...")
     new_images_count, firebase_success = download_firebase_faces()
     
-    # Load existing model or rebuild if needed
+    # Load existing model or build if needed
     model_path = "models/enhanced_face_model.pkl"
-    rebuild_needed = new_images_count > 0 or not os.path.exists(model_path)
     
-    if rebuild_needed:
-        print("\n🔨 Rebuilding model from dataset...")
+    if os.path.exists(model_path):
+        print("📁 Loading existing model...")
+        embeddings, labels, threshold, index, success = load_model(model_path)
+        if success:
+            print(f"✅ Model loaded: {len(labels)} faces")
+            
+            # If new images from Firebase, do incremental update
+            if new_images_count > 0:
+                print("\n🔄 New images detected from Firebase. Performing incremental update...")
+                embeddings, labels, index, changed = incremental_update(
+                    face_app, dataset_path, embeddings, labels, index, threshold
+                )
+                if not changed:
+                    print("✅ Model is already up to date with Firebase")
+        else:
+            print("⚠️ Failed to load model, doing full rebuild...")
+            new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
+            
+            if success and len(new_embeddings) > 0:
+                new_index = build_index(new_embeddings)
+                if new_index:
+                    save_model(new_embeddings, new_labels, threshold, new_index)
+                    embeddings = new_embeddings
+                    labels = new_labels
+                    index = new_index
+                    print(f"✅ Full model built: {len(labels)} faces in database")
+                else:
+                    print("⚠️ Failed to build index, starting fresh")
+                    embeddings = []
+                    labels = []
+                    index = None
+            else:
+                print("⚠️ Failed to load dataset, starting fresh")
+                embeddings = []
+                labels = []
+                index = None
+    else:
+        print("⚠️ No existing model found. Building initial model from dataset...")
         new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
         
         if success and len(new_embeddings) > 0:
@@ -137,31 +173,17 @@ def initialize_system():
                 embeddings = new_embeddings
                 labels = new_labels
                 index = new_index
-                print(f"✅ Model rebuilt: {len(labels)} faces in database")
+                print(f"✅ Initial model built: {len(labels)} faces in database")
             else:
                 print("⚠️ Failed to build index, starting fresh")
                 embeddings = []
                 labels = []
                 index = None
         else:
-            print("⚠️ Failed to load dataset, starting fresh")
+            print("⚠️ No dataset found, starting with empty model")
             embeddings = []
             labels = []
             index = None
-    else:
-        # Load existing model
-        if os.path.exists(model_path):
-            print("📁 Loading existing model...")
-            embeddings, labels, threshold, index, success = load_model(model_path)
-            if success:
-                print(f"✅ Model loaded: {len(labels)} faces")
-            else:
-                print("⚠️ Failed to load model, starting fresh")
-                embeddings = []
-                labels = []
-                index = None
-        else:
-            print("⚠️ No existing model found")
     
     # Ensure dataset directory exists
     os.makedirs(dataset_path, exist_ok=True)
@@ -210,7 +232,6 @@ def save_base64_image(base64_string: str, person_name: str, image_index: int):
     except Exception as e:
         print(f"Error saving image: {e}")
         return None
-
 
 def download_firebase_faces():
     """Download all face images from Firebase Storage"""
@@ -348,33 +369,29 @@ async def train_face(request: TrainRequest):
         
         print(f"✅ Saved {len(saved_images)} images")
         
-        # Rebuild model
-        print("🔨 Rebuilding model...")
-        new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
+        # Incremental update: Add only new person to model
+        print("� Updating model incrementally...")
+        new_embeddings, new_labels, new_index, model_changed = incremental_update(
+            face_app, dataset_path, embeddings, labels, index, threshold
+        )
         
-        if success and len(new_embeddings) > 0:
-            new_index = build_index(new_embeddings)
-            if new_index:
-                save_model(new_embeddings, new_labels, threshold, new_index)
-                
-                # Update global variables
-                embeddings = new_embeddings
-                labels = new_labels
-                index = new_index
-                
-                print(f"✅ Model rebuilt: {len(labels)} faces in database")
-                
-                return TrainResponse(
-                    success=True,
-                    message=f"Successfully trained face for {person_name}",
-                    person_name=person_name,
-                    images_saved=len(saved_images),
-                    total_faces_in_database=len(set(labels))
-                )
-            else:
-                raise HTTPException(status_code=500, detail="Failed to build index")
+        if new_index is not None:
+            # Update global variables
+            embeddings = new_embeddings
+            labels = new_labels
+            index = new_index
+            
+            print(f"✅ Model updated: {len(labels)} faces in database")
+            
+            return TrainResponse(
+                success=True,
+                message=f"Successfully trained face for {person_name}",
+                person_name=person_name,
+                images_saved=len(saved_images),
+                total_faces_in_database=len(set(labels))
+            )
         else:
-            raise HTTPException(status_code=500, detail="Failed to load dataset")
+            raise HTTPException(status_code=500, detail="Failed to update model")
             
     except HTTPException as e:
         raise e
@@ -477,33 +494,63 @@ async def get_database_info():
 
 @app.post("/rebuild")
 async def rebuild_model():
-    """Rebuild model from dataset"""
+    """
+    Incrementally update model with changes from Firebase
+    
+    This endpoint:
+    - Adds new persons that were added to Firebase since last sync
+    - Removes persons that were deleted from Firebase
+    - Keeps existing embeddings for unchanged persons (no re-processing)
+    """
     global embeddings, labels, index
     
     try:
-        print("🔨 Rebuilding model from dataset...")
+        print("� Performing incremental model update...")
         
-        new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
-        
-        if success and len(new_embeddings) > 0:
-            new_index = build_index(new_embeddings)
-            if new_index:
-                save_model(new_embeddings, new_labels, threshold, new_index)
-                
-                embeddings = new_embeddings
-                labels = new_labels
-                index = new_index
-                
-                return {
-                    "success": True,
-                    "message": "Model rebuilt successfully",
-                    "total_faces": len(labels),
-                    "unique_persons": len(set(labels))
-                }
+        # If model doesn't exist or is corrupted, do full rebuild
+        if full_rebuild_needed(embeddings, labels, index):
+            print("⚠️ Model corrupted or missing. Doing full rebuild...")
+            new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
+            
+            if success and len(new_embeddings) > 0:
+                new_index = build_index(new_embeddings)
+                if new_index:
+                    save_model(new_embeddings, new_labels, threshold, new_index)
+                    
+                    embeddings = new_embeddings
+                    labels = new_labels
+                    index = new_index
+                    
+                    return {
+                        "success": True,
+                        "message": "Full model rebuild completed",
+                        "total_faces": len(labels),
+                        "unique_persons": len(set(labels))
+                    }
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to build index")
             else:
-                raise HTTPException(status_code=500, detail="Failed to build index")
+                raise HTTPException(status_code=500, detail="No dataset found")
+        
+        # Incremental update
+        new_embeddings, new_labels, new_index, model_changed = incremental_update(
+            face_app, dataset_path, embeddings, labels, index, threshold
+        )
+        
+        if new_index is not None:
+            embeddings = new_embeddings
+            labels = new_labels
+            index = new_index
+            
+            return {
+                "success": True,
+                "message": "Incremental model update completed",
+                "total_faces": len(labels),
+                "unique_persons": len(set(labels)) if len(labels) > 0 else 0,
+                "model_changed": model_changed
+            }
         else:
-            raise HTTPException(status_code=500, detail="No dataset found or failed to load")
+            raise HTTPException(status_code=500, detail="Failed to update model")
             
     except HTTPException as e:
         raise e
@@ -514,19 +561,19 @@ async def rebuild_model():
 @app.post("/firebase/download", response_model=FirebaseDownloadResponse)
 async def firebase_download():
     """
-    Download all face images from Firebase Storage and rebuild model automatically
+    Download all face images from Firebase Storage and update model incrementally
     
     This endpoint:
     1. Downloads new images from Firebase Storage (faces/ folder)
     2. Saves them to the local dataset folder
-    3. Automatically rebuilds the face recognition model
+    3. Incrementally updates the model (adds new, removes missing)
     4. Returns updated database statistics
     """
     global embeddings, labels, index
     
     try:
         print("\n" + "="*60)
-        print("📥 FIREBASE DOWNLOAD & MODEL REBUILD")
+        print("📥 FIREBASE SYNC & INCREMENTAL MODEL UPDATE")
         print("="*60)
         
         # Download images from Firebase
@@ -538,57 +585,55 @@ async def firebase_download():
                 detail="Failed to download images from Firebase"
             )
         
-        # If new images were downloaded or no model exists, rebuild
-        model_path = "models/enhanced_face_model.pkl"
-        rebuild_needed = new_images_count > 0 or not os.path.exists(model_path)
+        # Perform incremental update
+        print("\n🔄 Performing incremental model update...")
         
-        if rebuild_needed:
-            print("\n🔨 Rebuilding model from dataset...")
+        # Handle case where model doesn't exist yet
+        if full_rebuild_needed(embeddings, labels, index):
+            print("⚠️ Model needs full rebuild. Building from scratch...")
             new_embeddings, new_labels, success = load_dataset(face_app, dataset_path)
             
             if success and len(new_embeddings) > 0:
                 new_index = build_index(new_embeddings)
                 if new_index:
                     save_model(new_embeddings, new_labels, threshold, new_index)
-                    
-                    # Update global variables
                     embeddings = new_embeddings
                     labels = new_labels
                     index = new_index
-                    
-                    unique_persons = list(set(labels))
-                    
-                    print(f"✅ Model rebuilt successfully")
-                    print(f"📊 Total faces: {len(labels)}")
-                    print(f"👥 Unique persons: {len(unique_persons)}")
-                    
-                    return FirebaseDownloadResponse(
-                        success=True,
-                        message=f"Successfully downloaded {new_images_count} images and rebuilt model",
-                        images_downloaded=new_images_count,
-                        total_faces_in_database=len(labels),
-                        persons_trained=unique_persons
-                    )
                 else:
                     raise HTTPException(status_code=500, detail="Failed to build index")
             else:
-                raise HTTPException(status_code=500, detail="Failed to load dataset after download")
+                raise HTTPException(status_code=500, detail="No dataset found")
         else:
-            # No new images, but return current database status
-            unique_persons = list(set(labels)) if len(labels) > 0 else []
-            
-            return FirebaseDownloadResponse(
-                success=True,
-                message="No new images found in Firebase Storage",
-                images_downloaded=0,
-                total_faces_in_database=len(labels),
-                persons_trained=unique_persons
+            # Incremental update
+            new_embeddings, new_labels, new_index, model_changed = incremental_update(
+                face_app, dataset_path, embeddings, labels, index, threshold
             )
+            
+            if new_index is not None:
+                embeddings = new_embeddings
+                labels = new_labels
+                index = new_index
+        
+        unique_persons = list(set(labels)) if len(labels) > 0 else []
+        
+        print(f"\n✅ Sync & Update Complete")
+        print(f"📊 Images downloaded: {new_images_count}")
+        print(f"👥 Total faces in database: {len(labels)}")
+        print(f"👤 Unique persons: {len(unique_persons)}")
+        
+        return FirebaseDownloadResponse(
+            success=True,
+            message=f"Successfully synced and updated model. Downloaded {new_images_count} new images." if new_images_count > 0 else "Model synced (no new images)",
+            images_downloaded=new_images_count,
+            total_faces_in_database=len(labels),
+            persons_trained=unique_persons
+        )
             
     except HTTPException as e:
         raise e
     except Exception as e:
-        print(f"❌ Firebase download error: {e}")
+        print(f"❌ Firebase sync error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
