@@ -72,7 +72,7 @@ def load_model(model_path=None):
         if os.path.exists(index_path):
             index = faiss.read_index(index_path)
             print(f"📁 Index loaded: {index_path}")
-        
+
         print(f"✅ Model loaded successfully: {len(labels)} embeddings")
         return embeddings, labels, threshold, index, True
     except Exception as e:
